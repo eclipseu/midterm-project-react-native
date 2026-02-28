@@ -1,20 +1,27 @@
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { StatusBar } from "react-native";
+import { SavedJobsProvider } from "./src/context/SavedJobsContext";
+import { ThemeProvider, useTheme } from "./src/context/ThemeContext";
+import { AppNavigator } from "./src/navigation/AppNavigator";
 
-export default function App() {
+function AppContent() {
+  const { mode } = useTheme();
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <>
+      <StatusBar
+        barStyle={mode === "dark" ? "light-content" : "dark-content"}
+      />
+      <AppNavigator />
+    </>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+export default function App() {
+  return (
+    <ThemeProvider>
+      <SavedJobsProvider>
+        <AppContent />
+      </SavedJobsProvider>
+    </ThemeProvider>
+  );
+}
