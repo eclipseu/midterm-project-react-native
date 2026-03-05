@@ -1,7 +1,10 @@
 import { StatusBar } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { ApplicationTrackingProvider } from "./src/context/ApplicationTrackingContext";
+import { FilterProvider } from "./src/context/FilterContext";
 import { SavedJobsProvider } from "./src/context/SavedJobsContext";
 import { ThemeProvider, useTheme } from "./src/context/ThemeContext";
-import { AppNavigator } from "./src/navigation/AppNavigator";
+import { RootStackNavigator } from "./src/navigation/RootStackNavigator";
 
 function AppContent() {
   const { mode } = useTheme();
@@ -11,17 +14,23 @@ function AppContent() {
       <StatusBar
         barStyle={mode === "dark" ? "light-content" : "dark-content"}
       />
-      <AppNavigator />
+      <RootStackNavigator />
     </>
   );
 }
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <SavedJobsProvider>
-        <AppContent />
-      </SavedJobsProvider>
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider>
+        <ApplicationTrackingProvider>
+          <SavedJobsProvider>
+            <FilterProvider>
+              <AppContent />
+            </FilterProvider>
+          </SavedJobsProvider>
+        </ApplicationTrackingProvider>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }

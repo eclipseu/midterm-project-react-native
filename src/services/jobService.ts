@@ -58,8 +58,8 @@ function formatSalary(
   return "Not disclosed";
 }
 
-export async function fetchJobs(): Promise<Job[]> {
-  const response = await fetch(API_URL);
+export async function fetchJobs(offset = 0, limit = 100): Promise<Job[]> {
+  const response = await fetch(`${API_URL}?offset=${offset}&limit=${limit}`);
 
   if (!response.ok) {
     throw new Error("Failed to fetch jobs. Please try again later.");
@@ -75,6 +75,30 @@ export async function fetchJobs(): Promise<Job[]> {
     id: uuidv4(),
     title: job.title?.trim() || "Untitled role",
     company: job.companyName?.trim() || "Unknown company",
+    companyName: job.companyName?.trim() || "Unknown company",
+    companyLogo: job.companyLogo?.trim() || undefined,
+    workModel: job.workModel?.trim() || undefined,
+    mainCategory: job.mainCategory?.trim() || undefined,
+    seniorityLevel: job.seniorityLevel?.trim() || undefined,
+    jobType: job.jobType?.trim() || undefined,
+    location: job.location?.trim() || undefined,
+    locations: Array.isArray(job.locations)
+      ? job.locations
+          .map((location) => location?.trim())
+          .filter((location): location is string => Boolean(location))
+      : undefined,
+    pubDate: typeof job.pubDate === "number" ? job.pubDate : undefined,
+    expiryDate: typeof job.expiryDate === "number" ? job.expiryDate : undefined,
+    guid: job.guid?.trim() || undefined,
+    tags: Array.isArray(job.tags)
+      ? job.tags
+          .map((tag) => tag?.trim())
+          .filter((tag): tag is string => Boolean(tag))
+      : undefined,
+    description: job.description || undefined,
+    minSalary: job.minSalary,
+    maxSalary: job.maxSalary,
+    currency: job.currency,
     salary: formatSalary(job.minSalary, job.maxSalary, job.currency),
     details: cleanText(job.description),
     applicationLink: job.applicationLink?.trim() || job.guid?.trim() || "",

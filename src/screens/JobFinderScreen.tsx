@@ -1,39 +1,164 @@
-import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import * as Haptics from "expo-haptics";
+import { IndeedEmptyState } from "../components/common/IndeedEmptyState";
+import { RecentlyViewedSection } from "../components/RecentlyViewedSection";
+import {
+  IndeedFilterChips,
+  type IndeedChipKey,
+} from "../components/filters/IndeedFilterChips";
+import {
+  IndeedFilterModal,
+  type IndeedFilterState,
+} from "../components/filters/IndeedFilterModal";
 import { JobCard } from "../components/JobCard";
-import { useSavedJobs } from "../context/SavedJobsContext";
+import { IndeedSearchHeader } from "../components/search/IndeedSearchHeader";
+import { useApplicationTracking } from "../context/ApplicationTrackingContext";
 import { useTheme } from "../context/ThemeContext";
 import { fetchJobs } from "../services/jobService";
 import type { Job } from "../types/job";
-import type { RootStackParamList } from "../types/navigation";
+import { addSearch, getRecentSearches } from "../utils/searchHistory";
+import { getRecentlyViewed } from "../utils/recentlyViewed";
 
-type Props = NativeStackScreenProps<RootStackParamList, "JobFinder">;
+type Props = {
+  navigation: any;
+};
+
+const PAGE_SIZE = 100;
+
+const initialFilters: IndeedFilterState = {
+  remote: "Any",
+  datePosted: "Any time",
+  showEstimate: false,
+  minimumSalary: "",
+};
+
+function getJobId(job: Job): string {
+  return job.guid || job.id;
+}
+
+function toTimestampSeconds(value: number | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+
+  return value > 1_000_000_000_000 ? Math.floor(value / 1000) : value;
+}
+
+function matchesDateFilter(
+  job: Job,
+  datePosted: IndeedFilterState["datePosted"],
+): boolean {
+  if (datePosted === "Any time") {
+    return true;
+  }
+
+  const pub = toTimestampSeconds(job.pubDate);
+  if (!pub) {
+    return false;
+  }
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  const diffHours = (nowSec - pub) / 3600;
+
+  if (datePosted === "Last 24 hours") {
+    return diffHours <= 24;
+  }
+
+  if (datePosted === "Last 3 days") {
+    return diffHours <= 72;
+  }
+
+  return diffHours <= 168;
+}
 
 export function JobFinderScreen({ navigation }: Props) {
   const { colors } = useTheme();
-  const { addJob, isSaved } = useSavedJobs();
+  const { saveJob, isJobSaved, getJobStatus, registerJobs } =
+    useApplicationTracking();
 
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [searchQuery, setSearchQuery] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [offset, setOffset] = useState(0);
 
-  const loadJobs = async () => {
-    setLoading(true);
-    setError(null);
+  const [whatDraftValue, setWhatDraftValue] = useState("");
+  const [whereDraftValue, setWhereDraftValue] = useState("");
+  const [searchValue, setSearchValue] = useState("");
+  const [appliedWhereValue, setAppliedWhereValue] = useState("");
+
+  const [activeChip, setActiveChip] = useState<IndeedChipKey | null>(null);
+  const [filterModalOpen, setFilterModalOpen] = useState(false);
+  const [filters, setFilters] = useState<IndeedFilterState>(initialFilters);
+
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [recentlyViewedJobs, setRecentlyViewedJobs] = useState<Job[]>([]);
+  const listOpacity = useRef(new Animated.Value(0)).current;
+
+  const loadJobs = async (
+    targetOffset: number,
+    options?: {
+      append?: boolean;
+      refresh?: boolean;
+    },
+  ) => {
+    const shouldAppend = options?.append ?? false;
+    const isRefresh = options?.refresh ?? false;
+
+    if (isRefresh) {
+      setRefreshing(true);
+    } else if (shouldAppend) {
+      setIsLoadingMore(true);
+    } else {
+      setLoading(true);
+      listOpacity.setValue(0);
+    }
+
+    if (!shouldAppend) {
+      setError(null);
+    }
 
     try {
-      const fetchedJobs = await fetchJobs();
-      setJobs(fetchedJobs);
+      const fetchedJobs = await fetchJobs(targetOffset, PAGE_SIZE);
+      const nextHasMore = fetchedJobs.length === PAGE_SIZE;
+
+      setHasMore(nextHasMore);
+      setOffset(targetOffset + fetchedJobs.length);
+
+      setJobs((currentJobs) => {
+        if (!shouldAppend || targetOffset === 0) {
+          return fetchedJobs;
+        }
+
+        const existingGuids = new Set(
+          currentJobs.map((job) => (job.guid || job.id).toLowerCase()),
+        );
+
+        const nextJobs = fetchedJobs.filter(
+          (job) => !existingGuids.has((job.guid || job.id).toLowerCase()),
+        );
+
+        return [...currentJobs, ...nextJobs];
+      });
+
+      Animated.timing(listOpacity, {
+        toValue: 1,
+        duration: 220,
+        useNativeDriver: true,
+      }).start();
     } catch (loadError) {
       const message =
         loadError instanceof Error
@@ -41,156 +166,362 @@ export function JobFinderScreen({ navigation }: Props) {
           : "Something went wrong while fetching jobs.";
       setError(message);
     } finally {
-      setLoading(false);
+      if (isRefresh) {
+        setRefreshing(false);
+      } else if (shouldAppend) {
+        setIsLoadingMore(false);
+      } else {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    void loadJobs();
+    void loadJobs(0);
+
+    void (async () => {
+      const [history, recentJobs] = await Promise.all([
+        getRecentSearches(),
+        getRecentlyViewed(),
+      ]);
+      setRecentSearches(history);
+      setRecentlyViewedJobs(recentJobs);
+    })();
   }, []);
 
-  const filteredJobs = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+  useEffect(() => {
+    registerJobs(jobs);
+  }, [jobs, registerJobs]);
 
-    if (!query) {
-      return jobs;
+  useEffect(() => {
+    const debounceId = setTimeout(() => {
+      setSearchValue(whatDraftValue.trim());
+      setAppliedWhereValue(whereDraftValue.trim());
+    }, 350);
+
+    return () => {
+      clearTimeout(debounceId);
+    };
+  }, [whatDraftValue, whereDraftValue]);
+
+  const filteredJobs = useMemo(() => {
+    const query = searchValue.trim().toLowerCase();
+    const locationQuery = appliedWhereValue.trim().toLowerCase();
+    const minSalary = Number(filters.minimumSalary || "0");
+
+    return jobs.filter((job) => {
+      const company = (job.companyName || job.company).toLowerCase();
+      const details = (job.details || "").toLowerCase();
+      const locationValues = [job.location || "", ...(job.locations || [])]
+        .join(" ")
+        .toLowerCase();
+      const workModel = (job.workModel || "").toLowerCase();
+
+      const matchesSearch =
+        query.length === 0 ||
+        job.title.toLowerCase().includes(query) ||
+        company.includes(query) ||
+        details.includes(query);
+
+      const matchesWhere =
+        locationQuery.length === 0 ||
+        locationValues.includes(locationQuery) ||
+        company.includes(locationQuery);
+
+      const matchesRemote =
+        filters.remote === "Any"
+          ? true
+          : filters.remote === "Remote only"
+            ? workModel.includes("remote")
+            : filters.remote === "Hybrid"
+              ? workModel.includes("hybrid")
+              : workModel.includes("on-site") ||
+                workModel.includes("on site") ||
+                workModel.includes("onsite");
+
+      const matchesDate = matchesDateFilter(job, filters.datePosted);
+
+      const salaryFloor =
+        typeof job.minSalary === "number"
+          ? job.minSalary
+          : typeof job.maxSalary === "number"
+            ? job.maxSalary
+            : 0;
+
+      const matchesSalary = !filters.showEstimate || salaryFloor >= minSalary;
+
+      return (
+        matchesSearch &&
+        matchesWhere &&
+        matchesRemote &&
+        matchesDate &&
+        matchesSalary
+      );
+    });
+  }, [
+    filters.datePosted,
+    filters.minimumSalary,
+    filters.remote,
+    filters.showEstimate,
+    jobs,
+    appliedWhereValue,
+    searchValue,
+  ]);
+
+  const hasNoResults = !loading && !error && filteredJobs.length === 0;
+
+  const handleLoadMore = () => {
+    if (loading || refreshing || isLoadingMore || !hasMore) {
+      return;
     }
 
-    return jobs.filter(
-      (job) =>
-        job.title.toLowerCase().includes(query) ||
-        job.company.toLowerCase().includes(query),
-    );
-  }, [jobs, searchQuery]);
+    void loadJobs(offset, { append: true });
+  };
 
-  return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Pressable
-        onPress={() => navigation.navigate("SavedJobs")}
-        style={[
-          styles.savedJobsButton,
-          { backgroundColor: colors.buttonSecondary },
-        ]}
-      >
-        <Text style={[styles.savedJobsText, { color: colors.buttonText }]}>
-          Go to Saved Jobs
-        </Text>
-      </Pressable>
+  const handleRefresh = () => {
+    setJobs([]);
+    setOffset(0);
+    setHasMore(true);
+    void loadJobs(0, { refresh: true });
+  };
 
-      <TextInput
-        value={searchQuery}
-        onChangeText={setSearchQuery}
-        placeholder="Search by title or company"
-        placeholderTextColor={colors.placeholder}
-        style={[
-          styles.searchInput,
-          {
-            backgroundColor: colors.inputBackground,
-            borderColor: colors.border,
-            color: colors.text,
-          },
-        ]}
+  const handleSearch = async () => {
+    const normalized = whatDraftValue.trim();
+    setSearchValue(normalized);
+    setAppliedWhereValue(whereDraftValue.trim());
+
+    if (normalized.length > 0) {
+      await addSearch(normalized);
+      setRecentSearches(await getRecentSearches());
+    }
+  };
+
+  const handleApplyPress = (job: Job) => {
+    const jobId = getJobId(job);
+    const status = getJobStatus(jobId);
+
+    if (status === "applied") {
+      navigation.navigate("MainTabs", { screen: "SavedJobs" });
+      return;
+    }
+
+    navigation.navigate("ApplicationForm", {
+      jobId,
+      source: "jobFinder",
+    });
+  };
+
+  const renderHeader = () => (
+    <View style={[styles.stickyWrap, { backgroundColor: colors.background }]}>
+      <IndeedSearchHeader
+        whatValue={whatDraftValue}
+        whereValue={whereDraftValue}
+        onWhatChange={setWhatDraftValue}
+        onWhereChange={setWhereDraftValue}
+        onSearch={() => {
+          void handleSearch();
+        }}
       />
 
-      {loading ? (
-        <View style={styles.centerState}>
-          <ActivityIndicator size="large" color={colors.buttonPrimary} />
-          <Text style={[styles.stateText, { color: colors.text }]}>
-            Loading jobs...
+      <IndeedFilterChips
+        activeChip={activeChip}
+        onPress={(chip) => {
+          setActiveChip(chip);
+          setFilterModalOpen(true);
+        }}
+      />
+
+      {recentSearches.length > 0 && whatDraftValue.trim().length === 0 ? (
+        <View style={styles.recentRow}>
+          <Text style={[styles.recentLabel, { color: colors.textSecondary }]}>
+            Recent:
           </Text>
+          {recentSearches.slice(0, 3).map((item) => (
+            <Pressable
+              key={item}
+              style={[styles.recentChip, { borderColor: colors.border }]}
+              onPress={() => {
+                setWhatDraftValue(item);
+                setSearchValue(item);
+              }}
+            >
+              <Text
+                style={[styles.recentChipText, { color: colors.textPrimary }]}
+              >
+                {item}
+              </Text>
+            </Pressable>
+          ))}
         </View>
       ) : null}
+
+      <RecentlyViewedSection
+        jobs={recentlyViewedJobs}
+        onSelectJob={(job) =>
+          navigation.navigate("JobDetail", { job, source: "jobFinder" })
+        }
+        onCleared={() => setRecentlyViewedJobs([])}
+      />
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
+      <IndeedFilterModal
+        visible={filterModalOpen}
+        filters={filters}
+        resultCount={filteredJobs.length}
+        onClose={() => setFilterModalOpen(false)}
+        onChange={setFilters}
+        onReset={() => setFilters(initialFilters)}
+        onShowResults={() => setFilterModalOpen(false)}
+      />
+
+      <View
+        style={[styles.headerContainer, { backgroundColor: colors.background }]}
+      >
+        {renderHeader()}
+      </View>
 
       {error ? (
-        <View style={styles.centerState}>
-          <Text style={[styles.errorText, { color: colors.error }]}>
-            {error}
-          </Text>
-          <Pressable
-            onPress={() => {
-              void loadJobs();
-            }}
-            style={[
-              styles.retryButton,
-              { backgroundColor: colors.buttonPrimary },
-            ]}
-          >
-            <Text style={[styles.retryText, { color: colors.buttonText }]}>
-              Retry
-            </Text>
-          </Pressable>
-        </View>
-      ) : null}
-
-      {!loading && !error ? (
-        <FlatList
-          data={filteredJobs}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <JobCard
-              job={item}
-              colors={colors}
-              isSaved={isSaved(item)}
-              onSave={addJob}
-              onApply={(job) => navigation.navigate("ApplicationForm", { job })}
-            />
-          )}
-          ListEmptyComponent={
-            <Text style={[styles.stateText, { color: colors.text }]}>
-              No jobs found.
-            </Text>
-          }
-          contentContainerStyle={styles.listContent}
+        <IndeedEmptyState
+          title="Something went wrong"
+          subtitle={error}
+          actionLabel="Retry"
+          onAction={() => {
+            void loadJobs(0);
+          }}
         />
-      ) : null}
-    </View>
+      ) : loading ? (
+        <View style={styles.centerState}>
+          <ActivityIndicator size="small" color={colors.primary} />
+        </View>
+      ) : (
+        <Animated.View style={[styles.listWrap, { opacity: listOpacity }]}>
+          <FlatList
+            data={filteredJobs}
+            keyExtractor={(item) => item.guid || item.id}
+            keyboardShouldPersistTaps="handled"
+            ListEmptyComponent={
+              hasNoResults ? (
+                <IndeedEmptyState
+                  title="No jobs match your search"
+                  subtitle="Try adjusting keywords, location, or filters."
+                />
+              ) : null
+            }
+            renderItem={({ item }) => (
+              <View style={styles.cardWrap}>
+                <JobCard
+                  job={item}
+                  colors={colors}
+                  isSaved={isJobSaved(getJobId(item))}
+                  onSave={(job) => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    void saveJob(job);
+                  }}
+                  onPress={(job) =>
+                    navigation.navigate("JobDetail", {
+                      job,
+                      source: "jobFinder",
+                    })
+                  }
+                  onCompanyPress={(job) =>
+                    navigation.navigate("CompanyJobs", {
+                      companyName: job.companyName || job.company,
+                    })
+                  }
+                  onApply={() => {
+                    handleApplyPress(item);
+                  }}
+                />
+              </View>
+            )}
+            onEndReachedThreshold={0.2}
+            onEndReached={handleLoadMore}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                tintColor={colors.primary}
+              />
+            }
+            ListFooterComponent={
+              isLoadingMore ? (
+                <View style={styles.footerState}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                </View>
+              ) : !hasMore && filteredJobs.length > 0 ? (
+                <View style={styles.footerState}>
+                  <Text
+                    style={[styles.footerText, { color: colors.textSecondary }]}
+                  >
+                    No more jobs
+                  </Text>
+                </View>
+              ) : null
+            }
+            contentContainerStyle={styles.listContent}
+          />
+        </Animated.View>
+      )}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safe: {
     flex: 1,
-    padding: 12,
   },
-  savedJobsButton: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 6,
-    marginBottom: 12,
+  listWrap: {
+    flex: 1,
   },
-  savedJobsText: {
-    fontWeight: "600",
+  headerContainer: {
+    zIndex: 1,
   },
-  searchInput: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 12,
+  stickyWrap: {
+    paddingBottom: 8,
   },
   listContent: {
     paddingBottom: 24,
   },
+  cardWrap: {
+    paddingHorizontal: 16,
+  },
   centerState: {
+    flex: 1,
     alignItems: "center",
-    marginTop: 24,
+    justifyContent: "center",
   },
-  stateText: {
-    marginTop: 8,
-    fontSize: 14,
+  footerState: {
+    paddingVertical: 16,
+    alignItems: "center",
   },
-  errorText: {
-    fontSize: 14,
-    marginBottom: 12,
-    textAlign: "center",
+  footerText: {
+    fontSize: 12,
+    fontWeight: "500",
   },
-  retryButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 6,
+  recentRow: {
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
-  retryText: {
+  recentLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  recentChip: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    minHeight: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  recentChipText: {
+    fontSize: 12,
     fontWeight: "600",
   },
 });
