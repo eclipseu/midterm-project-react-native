@@ -1,11 +1,14 @@
 import React, { createContext, useContext, useMemo, useState } from "react";
+import { useColorScheme } from "react-native";
 import { darkColors, lightColors, type ThemeColors } from "../constants/theme";
 
-type ThemeMode = "light" | "dark";
+export type ThemeMode = "light" | "dark" | "system";
 
 type ThemeContextValue = {
   mode: ThemeMode;
+  resolvedMode: "light" | "dark";
   colors: ThemeColors;
+  setMode: (mode: ThemeMode) => void;
   toggleTheme: () => void;
 };
 
@@ -16,19 +19,31 @@ type Props = {
 };
 
 export function ThemeProvider({ children }: Props) {
-  const [mode, setMode] = useState<ThemeMode>("light");
+  const systemScheme = useColorScheme();
+  const [mode, setMode] = useState<ThemeMode>("system");
+
+  const resolvedMode: "light" | "dark" =
+    mode === "system" ? (systemScheme === "dark" ? "dark" : "light") : mode;
 
   const toggleTheme = () => {
-    setMode((prevMode) => (prevMode === "light" ? "dark" : "light"));
+    setMode((prevMode) => {
+      if (prevMode === "system") {
+        return resolvedMode === "dark" ? "light" : "dark";
+      }
+
+      return prevMode === "light" ? "dark" : "light";
+    });
   };
 
   const value = useMemo<ThemeContextValue>(
     () => ({
       mode,
-      colors: mode === "light" ? lightColors : darkColors,
+      resolvedMode,
+      colors: resolvedMode === "light" ? lightColors : darkColors,
+      setMode,
       toggleTheme,
     }),
-    [mode],
+    [mode, resolvedMode],
   );
 
   return (

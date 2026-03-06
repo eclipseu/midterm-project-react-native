@@ -142,20 +142,16 @@ export function JobDetailScreen({ route, navigation }: Props) {
         ? new Date(appliedAt).toLocaleDateString()
         : "a previous date";
 
-      Alert.alert(
-        "Already applied",
-        `You already applied to this job on ${appliedOn}.`,
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "View in Applied section",
-            onPress: () =>
-              navigation.navigate("MainTabs", {
-                screen: "SavedJobs",
-              }),
-          },
-        ],
-      );
+      Alert.alert("Already applied", `You already applied to this job.`, [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "View in Applied section",
+          onPress: () =>
+            navigation.navigate("MainTabs", {
+              screen: "SavedJobs",
+            }),
+        },
+      ]);
       return;
     }
 
@@ -198,17 +194,9 @@ export function JobDetailScreen({ route, navigation }: Props) {
           <Text style={[styles.title, { color: colors.text }]}>
             {job.title}
           </Text>
-          <Pressable
-            onPress={() =>
-              navigation.navigate("CompanyJobs", {
-                companyName,
-              })
-            }
-          >
-            <Text style={[styles.companyLink, { color: colors.buttonPrimary }]}>
-              {companyName}
-            </Text>
-          </Pressable>
+          <Text style={[styles.companyLink, { color: colors.buttonPrimary }]}>
+            {companyName}
+          </Text>
           <View
             style={[
               styles.workModelChip,
@@ -315,13 +303,9 @@ export function JobDetailScreen({ route, navigation }: Props) {
         </View>
 
         <View style={styles.sectionBlock}>
-          <Pressable
-            onPress={() => navigation.navigate("CompanyJobs", { companyName })}
-          >
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              More jobs from {companyName}
-            </Text>
-          </Pressable>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            More jobs from {companyName}
+          </Text>
           {moreFromCompany.length > 0 ? (
             <ScrollView
               horizontal

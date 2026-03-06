@@ -1,7 +1,9 @@
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useMemo, useState } from "react";
+import * as DocumentPicker from "expo-document-picker";
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -34,6 +36,13 @@ type FormErrors = {
   whyHireYou?: string;
 };
 
+type AttachedResume = {
+  name: string;
+  uri: string;
+  mimeType?: string;
+  size?: number;
+};
+
 const initialFormData: FormData = {
   name: "",
   email: "",
@@ -53,6 +62,9 @@ export function ApplicationFormScreen({ navigation, route }: Props) {
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [attachedResume, setAttachedResume] = useState<AttachedResume | null>(
+    null,
+  );
 
   const job = getJobById(jobId);
   const jobTitle = job?.title || "This role";
@@ -113,6 +125,37 @@ export function ApplicationFormScreen({ navigation, route }: Props) {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleAttachResume = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          "application/pdf",
+          "application/msword",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (result.canceled || result.assets.length === 0) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      setAttachedResume({
+        name: asset.name,
+        uri: asset.uri,
+        mimeType: asset.mimeType,
+        size: asset.size,
+      });
+
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("Unable to attach resume", "Please try again.");
     }
   };
 
@@ -269,10 +312,52 @@ export function ApplicationFormScreen({ navigation, route }: Props) {
               </Text>
             </View>
             <IndeedButton
-              label="Attach resume"
-              onPress={() => {}}
+              label={attachedResume ? "Replace resume" : "Attach resume"}
+              onPress={() => {
+                void handleAttachResume();
+              }}
               variant="ghost"
             />
+            {attachedResume ? (
+              <View
+                style={[
+                  styles.resumeFileRow,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor: colors.inputBackground,
+                  },
+                ]}
+              >
+                <View style={styles.resumeFileInfo}>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.resumeFileName,
+                      { color: colors.textPrimary },
+                    ]}
+                  >
+                    {attachedResume.name}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.resumeFileMeta,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    {attachedResume.size
+                      ? `${Math.max(1, Math.round(attachedResume.size / 1024))} KB`
+                      : "Size unavailable"}
+                  </Text>
+                </View>
+                <Pressable onPress={() => setAttachedResume(null)}>
+                  <Text
+                    style={[styles.removeResumeText, { color: colors.error }]}
+                  >
+                    Remove
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
           </IndeedCard>
         </ScrollView>
 
@@ -427,6 +512,32 @@ const styles = StyleSheet.create({
   optional: {
     fontSize: 12,
     fontWeight: "600",
+  },
+  resumeFileRow: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  resumeFileInfo: {
+    flex: 1,
+  },
+  resumeFileName: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  resumeFileMeta: {
+    marginTop: 2,
+    fontSize: 12,
+  },
+  removeResumeText: {
+    fontSize: 12,
+    fontWeight: "700",
   },
   bottomBar: {
     position: "absolute",

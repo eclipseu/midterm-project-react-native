@@ -14,10 +14,6 @@ import * as Haptics from "expo-haptics";
 import { IndeedEmptyState } from "../components/common/IndeedEmptyState";
 import { RecentlyViewedSection } from "../components/RecentlyViewedSection";
 import {
-  IndeedFilterChips,
-  type IndeedChipKey,
-} from "../components/filters/IndeedFilterChips";
-import {
   IndeedFilterModal,
   type IndeedFilterState,
 } from "../components/filters/IndeedFilterModal";
@@ -45,6 +41,17 @@ const initialFilters: IndeedFilterState = {
 
 function getJobId(job: Job): string {
   return job.guid || job.id;
+}
+
+function getActiveFilterCount(filters: IndeedFilterState): number {
+  let count = 0;
+
+  if (filters.remote !== "Any") count += 1;
+  if (filters.datePosted !== "Any time") count += 1;
+  if (filters.showEstimate) count += 1;
+  if (filters.minimumSalary.trim().length > 0) count += 1;
+
+  return count;
 }
 
 function toTimestampSeconds(value: number | undefined): number | null {
@@ -100,9 +107,10 @@ export function JobFinderScreen({ navigation }: Props) {
   const [searchValue, setSearchValue] = useState("");
   const [appliedWhereValue, setAppliedWhereValue] = useState("");
 
-  const [activeChip, setActiveChip] = useState<IndeedChipKey | null>(null);
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [filters, setFilters] = useState<IndeedFilterState>(initialFilters);
+  const [draftFilters, setDraftFilters] =
+    useState<IndeedFilterState>(initialFilters);
 
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [recentlyViewedJobs, setRecentlyViewedJobs] = useState<Job[]>([]);
@@ -269,6 +277,7 @@ export function JobFinderScreen({ navigation }: Props) {
   ]);
 
   const hasNoResults = !loading && !error && filteredJobs.length === 0;
+  const activeFilterCount = getActiveFilterCount(filters);
 
   const handleLoadMore = () => {
     if (loading || refreshing || isLoadingMore || !hasMore) {
@@ -311,6 +320,16 @@ export function JobFinderScreen({ navigation }: Props) {
     });
   };
 
+  const openFilterModal = () => {
+    setDraftFilters(filters);
+    setFilterModalOpen(true);
+  };
+
+  const applyFilterChanges = () => {
+    setFilters(draftFilters);
+    setFilterModalOpen(false);
+  };
+
   const renderHeader = () => (
     <View style={[styles.stickyWrap, { backgroundColor: colors.background }]}>
       <IndeedSearchHeader
@@ -323,13 +342,35 @@ export function JobFinderScreen({ navigation }: Props) {
         }}
       />
 
-      <IndeedFilterChips
-        activeChip={activeChip}
-        onPress={(chip) => {
-          setActiveChip(chip);
-          setFilterModalOpen(true);
-        }}
-      />
+      <View style={styles.filterRow}>
+        <Pressable
+          onPress={openFilterModal}
+          style={[
+            styles.filterButton,
+            {
+              borderColor: colors.border,
+              backgroundColor: colors.card,
+            },
+          ]}
+        >
+          <Text
+            style={[styles.filterButtonLabel, { color: colors.textPrimary }]}
+          >
+            Filter
+          </Text>
+          {activeFilterCount > 0 ? (
+            <View
+              style={[styles.filterBadge, { backgroundColor: colors.primary }]}
+            >
+              <Text
+                style={[styles.filterBadgeText, { color: colors.buttonText }]}
+              >
+                {activeFilterCount}
+              </Text>
+            </View>
+          ) : null}
+        </Pressable>
+      </View>
 
       {recentSearches.length > 0 && whatDraftValue.trim().length === 0 ? (
         <View style={styles.recentRow}>
@@ -369,12 +410,11 @@ export function JobFinderScreen({ navigation }: Props) {
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
       <IndeedFilterModal
         visible={filterModalOpen}
-        filters={filters}
-        resultCount={filteredJobs.length}
+        filters={draftFilters}
         onClose={() => setFilterModalOpen(false)}
-        onChange={setFilters}
-        onReset={() => setFilters(initialFilters)}
-        onShowResults={() => setFilterModalOpen(false)}
+        onChange={setDraftFilters}
+        onClearAll={() => setDraftFilters(initialFilters)}
+        onApply={applyFilterChanges}
       />
 
       <View
@@ -424,11 +464,6 @@ export function JobFinderScreen({ navigation }: Props) {
                     navigation.navigate("JobDetail", {
                       job,
                       source: "jobFinder",
-                    })
-                  }
-                  onCompanyPress={(job) =>
-                    navigation.navigate("CompanyJobs", {
-                      companyName: job.companyName || job.company,
                     })
                   }
                   onApply={() => {
@@ -481,6 +516,37 @@ const styles = StyleSheet.create({
   },
   stickyWrap: {
     paddingBottom: 8,
+  },
+  filterRow: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 6,
+  },
+  filterButton: {
+    alignSelf: "flex-start",
+    minHeight: 40,
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  filterButtonLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  filterBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
   },
   listContent: {
     paddingBottom: 24,

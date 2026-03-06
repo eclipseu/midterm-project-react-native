@@ -37,7 +37,6 @@ type JobCardProps = {
   onApply: (job: Job) => void;
   onRemove?: (job: Job) => void;
   onPress?: (job: Job) => void;
-  onCompanyPress?: (job: Job) => void;
 };
 
 export function JobCard({
@@ -48,7 +47,6 @@ export function JobCard({
   onApply,
   onRemove,
   onPress,
-  onCompanyPress,
 }: JobCardProps) {
   const [hasLogoError, setHasLogoError] = useState<boolean>(false);
   const [scaleAnim] = useState(new Animated.Value(1));
@@ -127,24 +125,9 @@ export function JobCard({
             <Text style={[styles.title, { color: colors.text }]}>
               {job.title}
             </Text>
-            {onCompanyPress ? (
-              <Pressable
-                onPress={() => onCompanyPress(job)}
-                style={styles.companyPress}
-                accessibilityRole="button"
-                accessibilityLabel={`View more jobs from ${companyLabel}`}
-              >
-                <Text
-                  style={[styles.companyLink, { color: colors.buttonPrimary }]}
-                >
-                  {companyLabel}
-                </Text>
-              </Pressable>
-            ) : (
-              <Text style={[styles.meta, { color: colors.text }]}>
-                Company: {companyLabel}
-              </Text>
-            )}
+            <Text style={[styles.meta, { color: colors.text }]}>
+              Company: {companyLabel}
+            </Text>
 
             {visibleTags.length > 0 ? (
               <View style={styles.tagsRow}>
@@ -296,17 +279,6 @@ const styles = StyleSheet.create({
   meta: {
     fontSize: 14,
     marginBottom: 4,
-  },
-  companyPress: {
-    alignSelf: "flex-start",
-    minHeight: 24,
-    justifyContent: "center",
-    marginBottom: 4,
-  },
-  companyLink: {
-    fontSize: 14,
-    fontWeight: "700",
-    textDecorationLine: "underline",
   },
   tagsRow: {
     flexDirection: "row",

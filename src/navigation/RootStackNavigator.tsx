@@ -8,7 +8,6 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
 import { useApplicationTracking } from "../context/ApplicationTrackingContext";
 import { useTheme } from "../context/ThemeContext";
 import { ApplicationFormScreen } from "../screens/ApplicationFormScreen";
@@ -16,29 +15,12 @@ import { CompanyJobsScreen } from "../screens/CompanyJobsScreen";
 import { ComparisonScreen } from "../screens/ComparisonScreen";
 import { JobDetailScreen } from "../screens/JobDetailScreen";
 import { JobFinderScreen } from "../screens/JobFinderScreen";
+import { ProfileScreen } from "../screens/ProfileScreen";
 import { SavedJobsScreen } from "../screens/SavedJobsScreen";
 import type { MainTabParamList, RootStackParamList } from "../types/navigation";
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<MainTabParamList>();
-
-function AppliedProfilePlaceholder() {
-  const { colors } = useTheme();
-  const { appliedJobs } = useApplicationTracking();
-
-  return (
-    <View style={[styles.placeholder, { backgroundColor: colors.background }]}>
-      <Ionicons name="person-circle-outline" size={56} color={colors.primary} />
-      <Text style={[styles.placeholderTitle, { color: colors.textPrimary }]}>
-        Applied / Profile
-      </Text>
-      <Text style={[styles.placeholderBody, { color: colors.textSecondary }]}>
-        You have {appliedJobs.length} applied job
-        {appliedJobs.length === 1 ? "" : "s"}.
-      </Text>
-    </View>
-  );
-}
 
 function MainTabsNavigator() {
   const { colors } = useTheme();
@@ -85,9 +67,9 @@ function MainTabsNavigator() {
       />
       <Tabs.Screen
         name="AppliedProfile"
-        component={AppliedProfilePlaceholder}
+        component={ProfileScreen}
         options={{
-          title: "Applied",
+          title: "Profile",
           tabBarBadge: appliedJobs.length > 0 ? appliedJobs.length : undefined,
         }}
       />
@@ -106,11 +88,11 @@ const linking: LinkingOptions<RootStackParamList> = {
 };
 
 export function RootStackNavigator() {
-  const { mode } = useTheme();
+  const { resolvedMode } = useTheme();
 
   return (
     <NavigationContainer
-      theme={mode === "dark" ? DarkTheme : DefaultTheme}
+      theme={resolvedMode === "dark" ? DarkTheme : DefaultTheme}
       linking={linking}
     >
       <RootStack.Navigator
@@ -140,22 +122,3 @@ export function RootStackNavigator() {
     </NavigationContainer>
   );
 }
-
-const styles = StyleSheet.create({
-  placeholder: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 20,
-  },
-  placeholderTitle: {
-    marginTop: 10,
-    fontSize: 22,
-    fontWeight: "700",
-  },
-  placeholderBody: {
-    marginTop: 8,
-    fontSize: 14,
-    textAlign: "center",
-  },
-});

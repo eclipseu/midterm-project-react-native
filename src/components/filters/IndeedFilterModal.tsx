@@ -28,11 +28,10 @@ export type IndeedFilterState = {
 type Props = {
   visible: boolean;
   filters: IndeedFilterState;
-  resultCount: number;
   onClose: () => void;
   onChange: (next: IndeedFilterState) => void;
-  onReset: () => void;
-  onShowResults: () => void;
+  onClearAll: () => void;
+  onApply: () => void;
 };
 
 const REMOTE_OPTIONS: RemoteType[] = [
@@ -51,11 +50,10 @@ const DATE_OPTIONS: DatePostedType[] = [
 export function IndeedFilterModal({
   visible,
   filters,
-  resultCount,
   onClose,
   onChange,
-  onReset,
-  onShowResults,
+  onClearAll,
+  onApply,
 }: Props) {
   const { colors } = useTheme();
 
@@ -214,17 +212,13 @@ export function IndeedFilterModal({
           </ScrollView>
 
           <View style={[styles.footer, { borderTopColor: colors.border }]}>
-            <Pressable onPress={onReset}>
+            <Pressable onPress={onClearAll}>
               <Text style={[styles.reset, { color: colors.primary }]}>
-                Reset
+                Clear all
               </Text>
             </Pressable>
             <View style={styles.footerButton}>
-              <IndeedButton
-                label={`Show ${resultCount} results`}
-                onPress={onShowResults}
-                variant="primary"
-              />
+              <IndeedButton label="Apply" onPress={onApply} variant="primary" />
             </View>
           </View>
         </View>
